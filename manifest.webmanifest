@@ -1,0 +1,18 @@
+{
+  "name": "QuestionBar",
+  "short_name": "QuestionBar",
+  "description": "Dein KI-Chat für unterwegs",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#11100f",
+  "theme_color": "#11100f",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "QuestionBarIcon.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any"
+    }
+  ]
+}
