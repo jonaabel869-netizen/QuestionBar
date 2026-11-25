@@ -274,6 +274,31 @@ function addMessage(role, content, scroll = true) {
   }
 }
 
+// Fügt ein Bild direkt unter einer QuestionBar-Nachricht ein.
+// Das Bild selbst wird absichtlich nicht in localStorage gespeichert,
+// damit große Base64-Bilder nicht den Speicher des Browsers füllen.
+function appendGeneratedImage(imageUrl, prompt) {
+  const lastMessage = $("messages").lastElementChild;
+  const body = lastMessage?.querySelector(".message-body");
+
+  if (!body) return;
+
+  const img = document.createElement("img");
+  img.className = "generated-image";
+  img.alt = prompt;
+  img.src = imageUrl;
+  img.loading = "lazy";
+  body.insertBefore(img, body.querySelector(".message-actions"));
+
+  const openLink = document.createElement("a");
+  openLink.className = "image-download";
+  openLink.textContent = "Bild öffnen";
+  openLink.href = imageUrl;
+  openLink.target = "_blank";
+  openLink.rel = "noopener";
+  body.insertBefore(openLink, body.querySelector(".message-actions"));
+}
+
 function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, c => ({
     "&": "&amp;",
@@ -520,6 +545,88 @@ function extractAnswer(data) {
 }
 
 // ========================================
+// AUTOMATISCHE BILDERKENNUNG
+// ========================================
+
+function isImageRequest(text) {
+  return (
+    /\b(?:generiere|erstelle|erzeuge|zeichne|male|mach)\b[\s\S]{0,100}\b(?:bild|foto|zeichnung|illustration)\b/i.test(text) ||
+    /\b(?:bild|foto|zeichnung|illustration)\b[\s\S]{0,100}\b(?:generieren|erstellen|erzeugen|zeichnen|malen)\b/i.test(text)
+  );
+}
+
+async function requestPollinationsImage(prompt) {
+  const token = getPollinationsToken();
+
+  if (!token) {
+    throw new Error(
+      "Du bist noch nicht mit Pollinations verbunden. Öffne das Menü und verbinde zuerst dein Pollinations-Konto."
+    );
+  }
+
+  if (pollinationsBusy) {
+    throw new Error("Es wird bereits ein Bild erstellt. Bitte warte kurz.");
+  }
+
+  pollinationsBusy = true;
+
+  try {
+    const response = await fetch(
+      "https://gen.pollinations.ai/v1/images/generations",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "Authorization": `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          model: "black-forest-labs/flux.1-schnell",
+          prompt,
+          n: 1,
+          response_format: "b64_json"
+        })
+      }
+    );
+
+    const data = await response.json().catch(() => ({}));
+
+    if (!response.ok) {
+      const apiMessage =
+        data.error?.message ||
+        data.message ||
+        `HTTP ${response.status}`;
+
+      if (response.status === 401) {
+        throw new Error(
+          "Deine Pollinations-Sitzung ist ungültig oder abgelaufen. Verbinde Pollinations erneut."
+        );
+      }
+
+      if (response.status === 402) {
+        throw new Error(
+          "Dein freigegebenes Pollinations-Quest-Guthaben ist möglicherweise aufgebraucht."
+        );
+      }
+
+      throw new Error(apiMessage);
+    }
+
+    const image = data.data?.[0];
+
+    if (!image?.b64_json && !image?.url) {
+      throw new Error("Pollinations hat kein Bild im erwarteten Format zurückgegeben.");
+    }
+
+    return image.b64_json
+      ? `data:image/png;base64,${image.b64_json}`
+      : image.url;
+
+  } finally {
+    pollinationsBusy = false;
+  }
+}
+
+// ========================================
 // FRAGE AN QUESTIONBAR SENDEN
 // ========================================
 
@@ -527,7 +634,9 @@ async function ask(text) {
   text = text.trim();
   if (!text || state.busy) return;
 
-  if (!getCurrentApiKey()) {
+  // Für normale Textfragen wird weiterhin ein Gemini-/Groq-Key benötigt.
+  // Bildanfragen verwenden stattdessen die Pollinations-Verbindung.
+  if (!isImageRequest(text) && !getCurrentApiKey()) {
     $("settingsDialog").showModal();
     $("provider").value = settings.provider;
     $("model").value = settings.model;
@@ -548,6 +657,42 @@ async function ask(text) {
   saveActive();
 
   try {
+    // Automatische Bilderstellung direkt im Chat
+    if (isImageRequest(text)) {
+      try {
+        const imageUrl = await requestPollinationsImage(text);
+
+        const imageMessage = "🖼️ Dein Bild wurde erstellt.";
+        state.history.push({
+          role: "assistant",
+          content: imageMessage
+        });
+
+        typing(false);
+        addMessage("assistant", imageMessage);
+        appendGeneratedImage(imageUrl, text);
+        saveActive();
+
+      } catch (imageError) {
+        typing(false);
+
+        const errorText =
+          `**Bild konnte nicht erstellt werden**\n\n${imageError.message}`;
+
+        state.history.push({
+          role: "assistant",
+          content: errorText
+        });
+
+        addMessage("assistant", errorText);
+        saveActive();
+        console.error("QuestionBar Bildgenerierung:", imageError);
+      }
+
+      return;
+    }
+
+    // Normale Textnachrichten laufen wie bisher über Gemini oder Groq.
     const contents = state.history.map(m => ({
       role: m.role === "assistant" ? "model" : "user",
       parts: [{ text: m.content }]
@@ -895,7 +1040,7 @@ async function handlePollinationsCallback() {
 }
 
 // ========================================
-// BILDERSTELLUNG
+// BILDERSTELLUNG (SEPARATES FENSTER)
 // ========================================
 
 function createImageDialog() {
