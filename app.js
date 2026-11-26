@@ -650,16 +650,25 @@ function isImageRequest(text) {
 
   if (!value) return false;
 
-  // Typische Begriffe für einen Bildauftrag.
+  // Deutsche und englische Begriffe für Bildaufträge.
   const imageTerms =
-    /\b(?:bild(?:er)?|foto(?:s|grafie)?|fotografie|zeichnung|illustration|grafik|render|thumbnail|logo|hintergrundbild)\b/i;
+    /\b(?:bild(?:er)?|foto(?:s|grafie)?|fotografie|photograph(?:s)?|photography|photo(?:s)?|picture(?:s)?|image(?:s)?|zeichnung|illustration|grafik|render|thumbnail|logo|hintergrundbild)\b/i;
 
   const actionTerms =
-    /\b(?:generier(?:e|en|t)?|erstell(?:e|en|t)?|erzeug(?:e|en|t)?|zeichn(?:e|en)?|mal(?:e|en)?|mach(?:e|en)?|kreier(?:e|en)?|render(?:e|n)?)\b/i;
+    /\b(?:generier(?:e|en|t)?|erstell(?:e|en|t)?|erzeug(?:e|en|t)?|zeichn(?:e|en)?|mal(?:e|en)?|mach(?:e|en)?|kreier(?:e|en)?|render(?:e|n)?|create|generate|draw|make)\b/i;
 
-  // Aktion vor dem Bildbegriff:
-  // "Generiere mir ein Bild von einem Apfel."
+  // Beispiel: "Generiere mir ein Bild von einem Apfel."
   if (actionTerms.test(value) && imageTerms.test(value)) {
+    return true;
+  }
+
+  // Beispiel: "A realistic photograph of a green apple..."
+  // Ausführliche Bildbeschreibungen sind eigenständige Bildaufträge,
+  // auch wenn sie kein "erstelle/generiere" enthalten.
+  const descriptiveImagePrompt =
+    /\b(?:photograph|photography|photorealistic|photorealism|picture|image|macro shot|depth of field|high resolution|8k)\b/i;
+
+  if (value.length >= 45 && descriptiveImagePrompt.test(value)) {
     return true;
   }
 
@@ -667,13 +676,13 @@ function isImageRequest(text) {
   // "Ein Bild erstellen" / "Foto generieren".
   if (
     imageTerms.test(value) &&
-    /\b(?:generier(?:en|e)?|erstell(?:en|e)?|erzeug(?:en|e)?|zeichn(?:en|e)?|malen|machen)\b/i.test(value)
+    /\b(?:generier(?:en|e)?|erstell(?:en|e)?|erzeug(?:en|e)?|zeichn(?:en|e)?|malen|machen|create|generate|draw)\b/i.test(value)
   ) {
     return true;
   }
 
   // Explizite Kurzbefehle.
-  return /\b(?:bildgenerierung|bildgenerator|bild erstellen|bild generieren|foto erstellen|foto generieren)\b/i.test(value);
+  return /\b(?:bildgenerierung|bildgenerator|bild erstellen|bild generieren|foto erstellen|foto generieren|create an image|generate an image|make a picture)\b/i.test(value);
 }
 
 function isImageFollowUp(text) {
