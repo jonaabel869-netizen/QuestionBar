@@ -1,3 +1,4 @@
+
 const state = {
   history: [],
   chats: [],
@@ -6,7 +7,9 @@ const state = {
 };
 
 const STORAGE = "questionbar-mobile-v1";
-const IMAGE_API_URL = "https://questionbar-image-api.jonaabel869.workers.dev/";
+
+const IMAGE_API_URL =
+  "https://questionbar-image-api.jonaabel869.workers.dev/";
 
 const defaultSettings = {
   provider: "gemini",
@@ -279,116 +282,28 @@ function addMessage(role, content, scroll = true) {
   }
 }
 
-// ========================================
-// BILDGENERIERUNGS-KARTE IM CHAT
-// ========================================
+function appendGeneratedImage(imageUrl, prompt) {
+  const lastMessage = $("messages").lastElementChild;
+  const body = lastMessage?.querySelector(".message-body");
 
-function createImageLoadingCard(prompt) {
-  const row = document.createElement("article");
-  row.className = "message assistant image-message";
+  if (!body) return;
 
-  const avatar = document.createElement("div");
-  avatar.className = "avatar";
-  avatar.textContent = "Q";
-
-  const body = document.createElement("div");
-  body.className = "message-body";
-
-  const card = document.createElement("div");
-  card.className = "image-generation-card";
-
-  card.innerHTML = `
-    <div class="image-generation-preview">
-      <div class="image-generation-glow"></div>
-      <div class="image-generation-spinner"></div>
-      <div class="image-generation-icon">✦</div>
-    </div>
-
-    <div class="image-generation-info">
-      <div class="image-generation-title">
-        QuestionBar erstellt dein Bild
-      </div>
-
-      <div class="image-generation-status">
-        Deine Beschreibung wird verarbeitet
-        <span class="image-generation-dots">
-          <i></i><i></i><i></i>
-        </span>
-      </div>
-    </div>
-  `;
-
-  body.append(card);
-  row.append(avatar, body);
-  $("messages").append(row);
-
-  $("chat").scrollTop = $("chat").scrollHeight;
-
-  return { row, card, prompt };
-}
-
-function appendGeneratedImage(imageUrl, prompt, targetCard = null) {
-  let card = targetCard;
-
-  if (!card) {
-    const loading = createImageLoadingCard(prompt);
-    card = loading.card;
-  }
-
-  card.className = "image-generation-card image-generation-complete";
-
-  card.innerHTML = `
-    <div class="image-generation-result"></div>
-    <div class="image-generation-footer">
-      <span>✦ Bild erfolgreich erstellt</span>
-      <a class="image-download" target="_blank" rel="noopener">
-        Bild öffnen ↗
-      </a>
-    </div>
-  `;
-
-  const result = card.querySelector(".image-generation-result");
   const img = document.createElement("img");
-
   img.className = "generated-image";
   img.alt = prompt;
   img.src = imageUrl;
-  img.loading = "eager";
+  img.loading = "lazy";
 
-  img.onerror = () => {
-    result.innerHTML = `
-      <div class="image-generation-failed">
-        Das Bild konnte im Browser nicht angezeigt werden.
-      </div>
-    `;
-  };
+  body.insertBefore(img, body.querySelector(".message-actions"));
 
-  result.append(img);
-
-  const openLink = card.querySelector(".image-download");
+  const openLink = document.createElement("a");
+  openLink.className = "image-download";
+  openLink.textContent = "Bild öffnen";
   openLink.href = imageUrl;
+  openLink.target = "_blank";
+  openLink.rel = "noopener";
 
-  $("chat").scrollTop = $("chat").scrollHeight;
-}
-
-function showImageError(targetCard, error) {
-  targetCard.className = "image-generation-card image-generation-error";
-
-  targetCard.innerHTML = `
-    <div class="image-error-icon">!</div>
-    <div class="image-generation-title">Bild konnte nicht erstellt werden</div>
-    <div class="image-error-text"></div>
-    <button class="image-retry-btn" type="button">
-      Erneut versuchen
-    </button>
-  `;
-
-  targetCard.querySelector(".image-error-text").textContent =
-    error.message || "Unbekannter Fehler.";
-
-  targetCard.querySelector(".image-retry-btn").addEventListener("click", () => {
-    ask(targetCard.dataset.originalPrompt || "Erstelle das Bild erneut.");
-  });
+  body.insertBefore(openLink, body.querySelector(".message-actions"));
 }
 
 function escapeHtml(s) {
@@ -643,47 +558,29 @@ function extractAnswer(data) {
 // ========================================
 
 function isImageRequest(text) {
-  const value = String(text || "")
-    .normalize("NFKC")
-    .toLocaleLowerCase("de")
-    .trim();
+  const value = text.trim();
 
-  if (!value) return false;
-
-  // Deutsche und englische Begriffe für Bildaufträge.
-  const imageTerms =
-    /\b(?:bild(?:er)?|foto(?:s|grafie)?|fotografie|photograph(?:s)?|photography|photo(?:s)?|picture(?:s)?|image(?:s)?|zeichnung|illustration|grafik|render|thumbnail|logo|hintergrundbild)\b/i;
-
-  const actionTerms =
-    /\b(?:generier(?:e|en|t)?|erstell(?:e|en|t)?|erzeug(?:e|en|t)?|zeichn(?:e|en)?|mal(?:e|en)?|mach(?:e|en)?|kreier(?:e|en)?|render(?:e|n)?|create|generate|draw|make)\b/i;
-
-  // Beispiel: "Generiere mir ein Bild von einem Apfel."
-  if (actionTerms.test(value) && imageTerms.test(value)) {
-    return true;
-  }
-
-  // Beispiel: "A realistic photograph of a green apple..."
-  // Ausführliche Bildbeschreibungen sind eigenständige Bildaufträge,
-  // auch wenn sie kein "erstelle/generiere" enthalten.
-  const descriptiveImagePrompt =
-    /\b(?:photograph|photography|photorealistic|photorealism|picture|image|macro shot|depth of field|high resolution|8k)\b/i;
-
-  if (value.length >= 45 && descriptiveImagePrompt.test(value)) {
-    return true;
-  }
-
-  // Bildbegriff vor der Aktion:
-  // "Ein Bild erstellen" / "Foto generieren".
+  // Klassische Bildanfragen
   if (
-    imageTerms.test(value) &&
-    /\b(?:generier(?:en|e)?|erstell(?:en|e)?|erzeug(?:en|e)?|zeichn(?:en|e)?|malen|machen|create|generate|draw)\b/i.test(value)
+    /\b(?:generiere|erstelle|erzeuge|zeichne|male|mach|mache)\b[\s\S]{0,120}\b(?:bild|foto|fotografie|zeichnung|illustration|grafik|render)\b/i.test(value) ||
+    /\b(?:bild|foto|fotografie|zeichnung|illustration|grafik|render)\b[\s\S]{0,120}\b(?:generieren|erstellen|erzeugen|zeichnen|malen)\b/i.test(value) ||
+    /\b(?:bildgenerierung|bildgenerator)\b/i.test(value)
   ) {
     return true;
   }
 
-  // Explizite Kurzbefehle.
-  return /\b(?:bildgenerierung|bildgenerator|bild erstellen|bild generieren|foto erstellen|foto generieren|create an image|generate an image|make a picture)\b/i.test(value);
+  // Auch reine Bildbeschreibungen erkennen:
+  // "Ein grüner Apfel auf einem weißen Tisch, realistisches Foto."
+  return (
+    /\b(?:foto|fotografie|bild|illustration|zeichnung|grafik|render)\b/i.test(value) &&
+    /\b(?:realistisch|fotorealistisch|realistisches|realistische|generiert|erstellt)\b/i.test(value)
+  );
 }
+
+// Folgeanfragen wie:
+// "Erstelle es jetzt in Rot"
+// "Mach den Lamborghini blau"
+// "Ändere die Farbe zu Schwarz"
 
 function isImageFollowUp(text) {
   const value = text.trim();
@@ -700,7 +597,10 @@ function isImageFollowUp(text) {
   return (hasReference && hasChange) || shortChange;
 }
 
+// Sucht das letzte Bild oder eine Bildbeschreibung im aktuellen Chat.
+
 function getPreviousImagePrompt() {
+  // Zuerst nach einem erfolgreich generierten Bild suchen.
   for (let i = state.history.length - 1; i >= 0; i--) {
     const message = state.history[i];
 
@@ -708,7 +608,9 @@ function getPreviousImagePrompt() {
       message.role === "assistant" &&
       message.content === "🖼️ Dein Bild wurde erstellt."
     ) {
-      if (message.imagePrompt) return message.imagePrompt;
+      if (message.imagePrompt) {
+        return message.imagePrompt;
+      }
 
       for (let j = i - 1; j >= 0; j--) {
         if (state.history[j].role === "user") {
@@ -718,6 +620,8 @@ function getPreviousImagePrompt() {
     }
   }
 
+  // Falls noch kein Bild existiert:
+  // Die letzte passende Bildbeschreibung suchen.
   for (let i = state.history.length - 1; i >= 0; i--) {
     const message = state.history[i];
 
@@ -731,6 +635,9 @@ function getPreviousImagePrompt() {
 
   return null;
 }
+
+// Baut einen neuen Prompt aus dem ursprünglichen Bild
+// und der Änderungsanweisung.
 
 function buildImagePrompt(originalPrompt, followUp) {
   return [
@@ -785,10 +692,7 @@ async function requestCloudflareImage(prompt) {
     const imageBlob = await response.blob();
 
     if (!imageBlob.type.startsWith("image/")) {
-      throw new Error(
-        "Cloudflare hat keine Bilddatei zurückgegeben. Antwort-Typ: " +
-        (imageBlob.type || "unbekannt")
-      );
+      throw new Error("Cloudflare hat keine Bilddatei zurückgegeben.");
     }
 
     return URL.createObjectURL(imageBlob);
@@ -806,7 +710,9 @@ async function ask(text) {
   text = text.trim();
   if (!text || state.busy) return;
 
+  // Vor der neuen Nachricht den bisherigen Bildkontext suchen.
   const previousImagePrompt = getPreviousImagePrompt();
+
   const directImageRequest = isImageRequest(text);
 
   const imageFollowUp =
@@ -817,6 +723,7 @@ async function ask(text) {
   const shouldGenerateImage =
     directImageRequest || Boolean(imageFollowUp);
 
+  // Für Bilder wird kein Gemini- oder Groq-Key benötigt.
   if (!shouldGenerateImage && !getCurrentApiKey()) {
     $("settingsDialog").showModal();
     $("provider").value = settings.provider;
@@ -842,14 +749,14 @@ async function ask(text) {
   saveActive();
 
   try {
+    // ====================================
+    // BILDANFRAGE DIREKT AN CLOUDFLARE
+    // ====================================
+
     if (shouldGenerateImage) {
-      typing(false);
-
-      const loadingCard = createImageLoadingCard(finalImagePrompt);
-      loadingCard.card.dataset.originalPrompt = text;
-
       try {
         const imageUrl = await requestCloudflareImage(finalImagePrompt);
+
         const imageMessage = "🖼️ Dein Bild wurde erstellt.";
 
         state.history.push({
@@ -858,16 +765,13 @@ async function ask(text) {
           imagePrompt: finalImagePrompt
         });
 
-        appendGeneratedImage(
-          imageUrl,
-          finalImagePrompt,
-          loadingCard.card
-        );
-
+        typing(false);
+        addMessage("assistant", imageMessage);
+        appendGeneratedImage(imageUrl, finalImagePrompt);
         saveActive();
 
       } catch (imageError) {
-        showImageError(loadingCard.card, imageError);
+        typing(false);
 
         const errorText =
           `**Bild konnte nicht erstellt werden**\n\n${imageError.message}`;
@@ -877,12 +781,18 @@ async function ask(text) {
           content: errorText
         });
 
+        addMessage("assistant", errorText);
         saveActive();
+
         console.error("QuestionBar Bildgenerierung:", imageError);
       }
 
       return;
     }
+
+    // ====================================
+    // NORMALE CHAT-ANFRAGE AN GROQ/GEMINI
+    // ====================================
 
     const contents = state.history.map(m => ({
       role: m.role === "assistant" ? "model" : "user",
@@ -1191,8 +1101,7 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     if (location.protocol === "http:" || location.protocol === "https:") {
       navigator.serviceWorker
-        .register("./sw.js?v=20261126-2", { updateViaCache: "none" })
-        .then(registration => registration.update())
+        .register("./sw.js")
         .catch(err => console.error("Service Worker:", err));
     }
   });
