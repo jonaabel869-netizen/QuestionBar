@@ -1,3 +1,4 @@
+
 const state = {
   history: [],
   chats: [],
@@ -6,6 +7,9 @@ const state = {
 };
 
 const STORAGE = "questionbar-mobile-v1";
+
+const IMAGE_API_URL =
+  "https://questionbar-image-api.jonaabel869.workers.dev/";
 
 const defaultSettings = {
   provider: "gemini",
@@ -16,6 +20,8 @@ const defaultSettings = {
 };
 
 let settings = { ...defaultSettings };
+let imageBusy = false;
+
 const $ = id => document.getElementById(id);
 
 // ========================================
@@ -234,6 +240,7 @@ function addMessage(role, content, scroll = true) {
       copy.addEventListener("click", async () => {
         await navigator.clipboard.writeText(code?.textContent || "");
         copy.textContent = "Kopiert ✓";
+
         setTimeout(() => {
           copy.textContent = "Code kopieren";
         }, 1300);
@@ -258,6 +265,7 @@ function addMessage(role, content, scroll = true) {
     copy.onclick = async () => {
       await navigator.clipboard.writeText(content);
       copy.textContent = "Kopiert ✓";
+
       setTimeout(() => {
         copy.textContent = "Antwort kopieren";
       }, 1200);
@@ -274,9 +282,6 @@ function addMessage(role, content, scroll = true) {
   }
 }
 
-// Fügt ein Bild direkt unter einer QuestionBar-Nachricht ein.
-// Das Bild selbst wird absichtlich nicht in localStorage gespeichert,
-// damit große Base64-Bilder nicht den Speicher des Browsers füllen.
 function appendGeneratedImage(imageUrl, prompt) {
   const lastMessage = $("messages").lastElementChild;
   const body = lastMessage?.querySelector(".message-body");
@@ -288,6 +293,7 @@ function appendGeneratedImage(imageUrl, prompt) {
   img.alt = prompt;
   img.src = imageUrl;
   img.loading = "lazy";
+
   body.insertBefore(img, body.querySelector(".message-actions"));
 
   const openLink = document.createElement("a");
@@ -296,6 +302,7 @@ function appendGeneratedImage(imageUrl, prompt) {
   openLink.href = imageUrl;
   openLink.target = "_blank";
   openLink.rel = "noopener";
+
   body.insertBefore(openLink, body.querySelector(".message-actions"));
 }
 
@@ -406,9 +413,11 @@ async function requestJSON(url, headers, body, providerName) {
 
       if (err instanceof TypeError && attempt < maxAttempts - 1) {
         const waitTime = [2000, 4000, 8000][attempt];
+
         console.warn(
           `${providerName}: Verbindungsfehler. Neuer Versuch in ${waitTime / 1000} Sekunden.`
         );
+
         await sleep(waitTime);
         continue;
       }
@@ -445,7 +454,7 @@ async function requestJSON(url, headers, body, providerName) {
       if (timeLeft <= waitTime) throw error;
 
       console.warn(
-        `${providerName} HTTP ${response.status}. Versuch ${attempt + 1}/${maxAttempts} fehlgeschlagen. Neuer Versuch in ${Math.ceil(waitTime / 1000)} Sekunden.`
+        `${providerName} HTTP ${response.status}. Neuer Versuch in ${Math.ceil(waitTime / 1000)} Sekunden.`
       );
 
       await sleep(waitTime);
@@ -545,7 +554,7 @@ function extractAnswer(data) {
 }
 
 // ========================================
-// AUTOMATISCHE BILDERKENNUNG
+// BILDERKENNUNG
 // ========================================
 
 function isImageRequest(text) {
@@ -555,74 +564,51 @@ function isImageRequest(text) {
   );
 }
 
-async function requestPollinationsImage(prompt) {
-  const token = getPollinationsToken();
+// ========================================
+// CLOUDFLARE BILDGENERIERUNG
+// ========================================
 
-  if (!token) {
-    throw new Error(
-      "Du bist noch nicht mit Pollinations verbunden. Öffne das Menü und verbinde zuerst dein Pollinations-Konto."
-    );
-  }
-
-  if (pollinationsBusy) {
+async function requestCloudflareImage(prompt) {
+  if (imageBusy) {
     throw new Error("Es wird bereits ein Bild erstellt. Bitte warte kurz.");
   }
 
-  pollinationsBusy = true;
+  imageBusy = true;
 
   try {
-    const response = await fetch(
-      "https://gen.pollinations.ai/v1/images/generations",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          model: "black-forest-labs/flux.1-schnell",
-          prompt,
-          n: 1,
-          response_format: "b64_json"
-        })
-      }
-    );
-
-    const data = await response.json().catch(() => ({}));
+    const response = await fetch(IMAGE_API_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ prompt })
+    });
 
     if (!response.ok) {
-      const apiMessage =
-        data.error?.message ||
-        data.message ||
-        `HTTP ${response.status}`;
+      const errorText = await response.text();
+      let errorMessage = errorText;
 
-      if (response.status === 401) {
-        throw new Error(
-          "Deine Pollinations-Sitzung ist ungültig oder abgelaufen. Verbinde Pollinations erneut."
-        );
-      }
+      try {
+        const errorData = JSON.parse(errorText);
+        errorMessage =
+          errorData.error || errorData.message || errorText;
+      } catch {}
 
-      if (response.status === 402) {
-        throw new Error(
-          "Dein freigegebenes Pollinations-Quest-Guthaben ist möglicherweise aufgebraucht."
-        );
-      }
-
-      throw new Error(apiMessage);
+      throw new Error(
+        errorMessage || `Cloudflare HTTP ${response.status}`
+      );
     }
 
-    const image = data.data?.[0];
+    const imageBlob = await response.blob();
 
-    if (!image?.b64_json && !image?.url) {
-      throw new Error("Pollinations hat kein Bild im erwarteten Format zurückgegeben.");
+    if (!imageBlob.type.startsWith("image/")) {
+      throw new Error("Cloudflare hat keine Bilddatei zurückgegeben.");
     }
 
-    return image.b64_json
-      ? `data:image/png;base64,${image.b64_json}`
-      : image.url;
+    return URL.createObjectURL(imageBlob);
 
   } finally {
-    pollinationsBusy = false;
+    imageBusy = false;
   }
 }
 
@@ -634,8 +620,6 @@ async function ask(text) {
   text = text.trim();
   if (!text || state.busy) return;
 
-  // Für normale Textfragen wird weiterhin ein Gemini-/Groq-Key benötigt.
-  // Bildanfragen verwenden stattdessen die Pollinations-Verbindung.
   if (!isImageRequest(text) && !getCurrentApiKey()) {
     $("settingsDialog").showModal();
     $("provider").value = settings.provider;
@@ -657,12 +641,12 @@ async function ask(text) {
   saveActive();
 
   try {
-    // Automatische Bilderstellung direkt im Chat
     if (isImageRequest(text)) {
       try {
-        const imageUrl = await requestPollinationsImage(text);
+        const imageUrl = await requestCloudflareImage(text);
 
         const imageMessage = "🖼️ Dein Bild wurde erstellt.";
+
         state.history.push({
           role: "assistant",
           content: imageMessage
@@ -686,13 +670,13 @@ async function ask(text) {
 
         addMessage("assistant", errorText);
         saveActive();
+
         console.error("QuestionBar Bildgenerierung:", imageError);
       }
 
       return;
     }
 
-    // Normale Textnachrichten laufen wie bisher über Gemini oder Groq.
     const contents = state.history.map(m => ({
       role: m.role === "assistant" ? "model" : "user",
       parts: [{ text: m.content }]
@@ -729,11 +713,11 @@ async function ask(text) {
     } else if ([500, 502, 504].includes(err.status)) {
       message = `Der ${providerName}-Server ist momentan nicht erreichbar.`;
     } else if (err.status === 429) {
-      message = `Das Nutzungslimit von ${providerName} wurde möglicherweise erreicht. Warte etwas und versuche es erneut.`;
+      message = `Das Nutzungslimit von ${providerName} wurde möglicherweise erreicht.`;
     } else if (err.status === 400) {
       message = `Die Anfrage wurde von ${providerName} abgelehnt. Prüfe den Modellnamen und die Anfrage.`;
     } else if (err.status === 401) {
-      message = `Der API-Key für ${providerName} ist ungültig. Bitte überprüfe ihn in den Einstellungen.`;
+      message = `Der API-Key für ${providerName} ist ungültig.`;
     } else if (err.status === 403) {
       message = "Zugriff verweigert. Prüfe deinen API-Key und die Berechtigungen.";
     } else if (err.status === 404) {
@@ -754,6 +738,7 @@ async function ask(text) {
     state.history.push({ role: "assistant", content: errorText });
     addMessage("assistant", errorText);
     saveActive();
+
     console.error(`QuestionBar ${providerName} Fehler:`, err);
 
   } finally {
@@ -784,6 +769,136 @@ function openDrawer() {
 function closeDrawer() {
   $("drawer").classList.remove("open");
   $("drawerBackdrop").classList.remove("open");
+}
+
+// ========================================
+// SEPARATES BILDFENSTER
+// ========================================
+
+function createImageDialog() {
+  if ($("imageDialog")) return;
+
+  const dialog = document.createElement("dialog");
+  dialog.id = "imageDialog";
+  dialog.className = "image-dialog";
+
+  dialog.innerHTML = `
+    <div class="image-panel">
+      <div class="settings-head">
+        <h2>Bild erstellen</h2>
+        <button class="icon-btn" id="closeImageDialog"
+          type="button" aria-label="Schließen">×</button>
+      </div>
+
+      <p class="image-description">
+        Beschreibe das Bild, das QuestionBar für dich erstellen soll.
+      </p>
+
+      <label for="imagePrompt">Bildbeschreibung</label>
+
+      <textarea
+        id="imagePrompt"
+        class="image-prompt"
+        placeholder="z. B. Eine futuristische Stadt bei Sonnenuntergang ..."
+        rows="4"
+      ></textarea>
+
+      <p class="image-cost-note">
+        Bildgenerierung über Cloudflare Workers AI.
+      </p>
+
+      <button class="primary-btn" id="generateImage" type="button">
+        Bild generieren
+      </button>
+
+      <div id="imageResult" class="image-result" aria-live="polite"></div>
+    </div>
+  `;
+
+  document.body.append(dialog);
+
+  $("closeImageDialog").onclick = () => dialog.close();
+  $("generateImage").onclick = generateCloudflareImage;
+}
+
+async function generateCloudflareImage() {
+  const prompt = $("imagePrompt").value.trim();
+  const result = $("imageResult");
+  const button = $("generateImage");
+
+  if (!prompt) {
+    result.textContent = "Bitte gib zuerst eine Bildbeschreibung ein.";
+    return;
+  }
+
+  if (imageBusy) {
+    result.textContent = "Es wird bereits ein Bild erstellt.";
+    return;
+  }
+
+  button.disabled = true;
+  button.textContent = "Bild wird erstellt ...";
+  result.innerHTML =
+    '<div class="image-loading">QuestionBar erstellt dein Bild ...</div>';
+
+  try {
+    const imageUrl = await requestCloudflareImage(prompt);
+
+    const img = document.createElement("img");
+    img.className = "generated-image";
+    img.alt = prompt;
+    img.src = imageUrl;
+
+    result.innerHTML = "";
+    result.append(img);
+
+    const download = document.createElement("a");
+    download.className = "image-download";
+    download.textContent = "Bild öffnen";
+    download.href = imageUrl;
+    download.target = "_blank";
+    download.rel = "noopener";
+
+    result.append(download);
+
+  } catch (error) {
+    console.error("Bildgenerierung:", error);
+    result.textContent =
+      "Bild konnte nicht erstellt werden: " + error.message;
+
+  } finally {
+    button.disabled = false;
+    button.textContent = "Bild generieren";
+  }
+}
+
+// ========================================
+// MENÜPUNKTE
+// ========================================
+
+function addQuestionBarMenu() {
+  const drawer = $("drawer");
+  const newChatButton = $("newChat");
+
+  if (!drawer || !newChatButton || !drawer.querySelector(".drawer-bottom")) {
+    console.error("QuestionBar-Menü konnte nicht erweitert werden.");
+    return;
+  }
+
+  if ($("imageMenuButton")) return;
+
+  const imageButton = document.createElement("button");
+  imageButton.id = "imageMenuButton";
+  imageButton.className = "drawer-action image-menu-button";
+  imageButton.type = "button";
+  imageButton.textContent = "✦ Bild erstellen";
+
+  imageButton.onclick = () => {
+    closeDrawer();
+    $("imageDialog").showModal();
+  };
+
+  newChatButton.insertAdjacentElement("afterend", imageButton);
 }
 
 // ========================================
@@ -876,384 +991,9 @@ if ("serviceWorker" in navigator) {
 }
 
 // ========================================
-// POLLINATIONS OAUTH + BILDERSTELLUNG
-// ========================================
-
-// Öffentliche App-ID. Niemals einen sk_-Secret-Key hier eintragen.
-const POLLINATIONS_CLIENT_ID = "pk_fYNkgV2cXEX7CBX3";
-const POLLINATIONS_REDIRECT_URI = location.origin + location.pathname;
-const POLLINATIONS_TOKEN_STORAGE = "questionbar-pollinations-session";
-
-let pollinationsBusy = false;
-
-function getPollinationsToken() {
-  return sessionStorage.getItem(POLLINATIONS_TOKEN_STORAGE) || "";
-}
-
-function setPollinationsStatus() {
-  const connected = Boolean(getPollinationsToken());
-  const status = $("pollinationsStatus");
-  const connectButton = $("pollinationsConnect");
-
-  if (status) {
-    status.textContent = connected ? "Verbunden" : "Nicht verbunden";
-    status.classList.toggle("connected", connected);
-  }
-
-  if (connectButton) {
-    connectButton.textContent = connected
-      ? "Pollinations trennen"
-      : "Pollinations verbinden";
-  }
-}
-
-function base64UrlEncode(bytes) {
-  let binary = "";
-  bytes.forEach(byte => {
-    binary += String.fromCharCode(byte);
-  });
-
-  return btoa(binary)
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/, "");
-}
-
-async function createPKCE() {
-  const random = new Uint8Array(32);
-  crypto.getRandomValues(random);
-  const verifier = base64UrlEncode(random);
-
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(verifier)
-  );
-
-  const challenge = base64UrlEncode(new Uint8Array(digest));
-  return { verifier, challenge };
-}
-
-async function connectPollinations() {
-  if (!POLLINATIONS_CLIENT_ID || !POLLINATIONS_CLIENT_ID.startsWith("pk_")) {
-    alert("Die Pollinations App-ID fehlt oder ist ungültig. Sie muss mit pk_ beginnen.");
-    return;
-  }
-
-  try {
-    const { verifier, challenge } = await createPKCE();
-    const stateValue = base64UrlEncode(
-      crypto.getRandomValues(new Uint8Array(24))
-    );
-
-    sessionStorage.setItem("questionbar-pkce-verifier", verifier);
-    sessionStorage.setItem("questionbar-oauth-state", stateValue);
-
-    const params = new URLSearchParams({
-      response_type: "code",
-      client_id: POLLINATIONS_CLIENT_ID,
-      redirect_uri: POLLINATIONS_REDIRECT_URI,
-      scope: "usage",
-      models: "image",
-      budget: "5",
-      expiry: "7",
-      state: stateValue,
-      code_challenge: challenge,
-      code_challenge_method: "S256"
-    });
-
-    location.href =
-      "https://enter.pollinations.ai/authorize?" + params.toString();
-
-  } catch (error) {
-    console.error("Pollinations-Verbindung:", error);
-    alert("Die Verbindung konnte nicht gestartet werden: " + error.message);
-  }
-}
-
-async function handlePollinationsCallback() {
-  const params = new URLSearchParams(location.search);
-  const code = params.get("code");
-  const oauthError = params.get("error");
-
-  if (oauthError) {
-    const description = params.get("error_description") || oauthError;
-    history.replaceState({}, document.title, POLLINATIONS_REDIRECT_URI);
-    alert("Pollinations-Anmeldung abgebrochen oder fehlgeschlagen: " + description);
-    return;
-  }
-
-  if (!code) return;
-
-  const savedState = sessionStorage.getItem("questionbar-oauth-state");
-  const verifier = sessionStorage.getItem("questionbar-pkce-verifier");
-  const returnedState = params.get("state");
-
-  if (!savedState || returnedState !== savedState || !verifier) {
-    alert("Die Pollinations-Anmeldung konnte nicht überprüft werden. Bitte verbinde Pollinations erneut.");
-    history.replaceState({}, document.title, POLLINATIONS_REDIRECT_URI);
-    return;
-  }
-
-  try {
-    const response = await fetch(
-      "https://enter.pollinations.ai/api/oauth/token",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/x-www-form-urlencoded"
-        },
-        body: new URLSearchParams({
-          grant_type: "authorization_code",
-          code,
-          client_id: POLLINATIONS_CLIENT_ID,
-          redirect_uri: POLLINATIONS_REDIRECT_URI,
-          code_verifier: verifier
-        })
-      }
-    );
-
-    const data = await response.json().catch(() => ({}));
-
-    if (!response.ok || !data.access_token) {
-      throw new Error(
-        data.error_description ||
-        data.error ||
-        data.message ||
-        `Token-Austausch fehlgeschlagen (HTTP ${response.status}).`
-      );
-    }
-
-    // Das Token ist ein kurzlebiger, nutzerautorisierter sk_-Zugang.
-    // Es bleibt nur in sessionStorage und wird nicht in localStorage gespeichert.
-    sessionStorage.setItem(POLLINATIONS_TOKEN_STORAGE, data.access_token);
-    sessionStorage.removeItem("questionbar-pkce-verifier");
-    sessionStorage.removeItem("questionbar-oauth-state");
-
-    history.replaceState({}, document.title, POLLINATIONS_REDIRECT_URI);
-    setPollinationsStatus();
-    alert("Pollinations wurde erfolgreich verbunden!");
-
-  } catch (error) {
-    console.error("Pollinations OAuth:", error);
-    alert("Pollinations-Verbindung fehlgeschlagen: " + error.message);
-  }
-}
-
-// ========================================
-// BILDERSTELLUNG (SEPARATES FENSTER)
-// ========================================
-
-function createImageDialog() {
-  if ($("imageDialog")) return;
-
-  const dialog = document.createElement("dialog");
-  dialog.id = "imageDialog";
-  dialog.className = "image-dialog";
-
-  dialog.innerHTML = `
-    <div class="image-panel">
-      <div class="settings-head">
-        <h2>Bild erstellen</h2>
-        <button class="icon-btn" id="closeImageDialog" type="button" aria-label="Schließen">×</button>
-      </div>
-
-      <p class="image-description">
-        Beschreibe das Bild, das QuestionBar für dich erstellen soll.
-      </p>
-
-      <label for="imagePrompt">Bildbeschreibung</label>
-      <textarea
-        id="imagePrompt"
-        class="image-prompt"
-        placeholder="z. B. Eine futuristische Stadt bei Sonnenuntergang ..."
-        rows="4"
-      ></textarea>
-
-      <label for="imageModel">Bildmodell</label>
-      <select id="imageModel">
-        <option value="black-forest-labs/flux.1-schnell">Flux Schnell</option>
-      </select>
-
-      <p class="image-cost-note">
-        Die Bildgenerierung verbraucht das von dir bei Pollinations freigegebene Budget.
-      </p>
-
-      <button class="primary-btn" id="generateImage" type="button">
-        Bild generieren
-      </button>
-
-      <div id="imageResult" class="image-result" aria-live="polite"></div>
-    </div>
-  `;
-
-  document.body.append(dialog);
-
-  $("closeImageDialog").onclick = () => dialog.close();
-  $("generateImage").onclick = generatePollinationsImage;
-}
-
-async function generatePollinationsImage() {
-  const token = getPollinationsToken();
-  const prompt = $("imagePrompt").value.trim();
-  const model = $("imageModel").value;
-  const result = $("imageResult");
-  const button = $("generateImage");
-
-  if (!token) {
-    result.textContent = "Du bist noch nicht mit Pollinations verbunden. Verbinde zuerst dein Konto im Menü.";
-    return;
-  }
-
-  if (!prompt) {
-    result.textContent = "Bitte gib zuerst eine Bildbeschreibung ein.";
-    return;
-  }
-
-  if (pollinationsBusy) return;
-
-  pollinationsBusy = true;
-  button.disabled = true;
-  button.textContent = "Bild wird erstellt ...";
-  result.innerHTML = '<div class="image-loading">QuestionBar erstellt dein Bild ...</div>';
-
-  try {
-    const response = await fetch(
-      "https://gen.pollinations.ai/v1/images/generations",
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Authorization": `Bearer ${token}`
-        },
-        body: JSON.stringify({
-          model,
-          prompt,
-          n: 1,
-          response_format: "b64_json"
-        })
-      }
-    );
-
-    const data = await response.json().catch(() => ({}));
-
-    if (!response.ok) {
-      const apiMessage =
-        data.error?.message ||
-        data.message ||
-        `HTTP ${response.status}`;
-
-      if (response.status === 401) {
-        throw new Error("Deine Pollinations-Sitzung ist ungültig oder abgelaufen. Trenne Pollinations und verbinde es erneut.");
-      }
-
-      if (response.status === 402) {
-        throw new Error("Das freigegebene Pollinations-Budget ist aufgebraucht oder reicht nicht aus. Prüfe dein Budget bei Pollinations.");
-      }
-
-      throw new Error(apiMessage);
-    }
-
-    const image = data.data?.[0];
-
-    if (!image?.b64_json && !image?.url) {
-      throw new Error("Die API hat kein Bild im erwarteten Format zurückgegeben.");
-    }
-
-    const img = document.createElement("img");
-    img.className = "generated-image";
-    img.alt = prompt;
-    img.src = image.b64_json
-      ? `data:image/png;base64,${image.b64_json}`
-      : image.url;
-
-    result.innerHTML = "";
-    result.append(img);
-
-    const download = document.createElement("a");
-    download.className = "image-download";
-    download.textContent = "Bild öffnen";
-    download.href = img.src;
-    download.target = "_blank";
-    download.rel = "noopener";
-    result.append(download);
-
-  } catch (error) {
-    console.error("Bildgenerierung:", error);
-    result.textContent = "Bild konnte nicht erstellt werden: " + error.message;
-
-  } finally {
-    pollinationsBusy = false;
-    button.disabled = false;
-    button.textContent = "Bild generieren";
-  }
-}
-
-// ========================================
-// NEUE MENÜPUNKTE
-// ========================================
-
-function addQuestionBarMenu() {
-  const drawer = $("drawer");
-  const newChatButton = $("newChat");
-
-  if (!drawer || !newChatButton || !drawer.querySelector(".drawer-bottom")) {
-    console.error("QuestionBar-Menü konnte nicht erweitert werden: Menüelemente fehlen.");
-    return;
-  }
-
-  // Verhindert doppelte Menüeinträge, falls die Funktion erneut aufgerufen wird.
-  if ($("imageMenuButton") || $("pollinationsCard")) return;
-
-  const imageButton = document.createElement("button");
-  imageButton.id = "imageMenuButton";
-  imageButton.className = "drawer-action image-menu-button";
-  imageButton.type = "button";
-  imageButton.textContent = "✦ Bild erstellen";
-
-  imageButton.onclick = () => {
-    closeDrawer();
-    $("imageDialog").showModal();
-  };
-
-  const connection = document.createElement("div");
-  connection.id = "pollinationsCard";
-  connection.className = "pollinations-card";
-  connection.innerHTML = `
-    <div class="pollinations-card-title">
-      <span>Bildgenerierung</span>
-      <span class="pollinations-dot"></span>
-    </div>
-    <div id="pollinationsStatus" class="pollinations-status">
-      Nicht verbunden
-    </div>
-    <button id="pollinationsConnect" class="pollinations-connect" type="button">
-      Pollinations verbinden
-    </button>
-  `;
-
-  newChatButton.insertAdjacentElement("afterend", imageButton);
-  imageButton.insertAdjacentElement("afterend", connection);
-
-  $("pollinationsConnect").onclick = () => {
-    if (getPollinationsToken()) {
-      if (confirm("Pollinations wirklich trennen?")) {
-        sessionStorage.removeItem(POLLINATIONS_TOKEN_STORAGE);
-        setPollinationsStatus();
-      }
-    } else {
-      connectPollinations();
-    }
-  };
-
-  setPollinationsStatus();
-}
-
-// ========================================
 // START
 // ========================================
 
 createImageDialog();
 addQuestionBarMenu();
-handlePollinationsCallback();
-setPollinationsStatus();
 load();
