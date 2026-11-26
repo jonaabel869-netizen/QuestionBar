@@ -36,12 +36,7 @@
         <span>QuestionBar</span>
       </div>
 
-      <div class="topbar-actions">
-        <button class="icon-btn account-icon-btn" id="accountBtn"
-          aria-label="Konto" title="Konto">♙</button>
-        <button class="icon-btn" id="settingsBtn"
-          aria-label="Einstellungen">⚙</button>
-      </div>
+      <button class="icon-btn" id="settingsBtn" aria-label="Einstellungen">⚙</button>
     </header>
 
     <main id="chat" class="chat">
@@ -87,8 +82,12 @@
           Enter zum Senden · Shift + Enter für neue Zeile
         </span>
 
-        <button id="sendBtn" class="send-btn" type="submit"
-          aria-label="Senden">↑</button>
+        <button
+          id="sendBtn"
+          class="send-btn"
+          type="submit"
+          aria-label="Senden"
+        >↑</button>
       </div>
     </form>
 
@@ -103,6 +102,7 @@
   <div class="drawer-backdrop" id="drawerBackdrop"></div>
 
   <aside class="drawer" id="drawer">
+
     <div class="drawer-head">
       <strong>QuestionBar</strong>
       <button class="icon-btn" id="closeDrawer">×</button>
@@ -117,21 +117,112 @@
     <div id="historyList" class="history-list"></div>
 
     <div class="drawer-bottom">
+
       <button class="drawer-action subtle" id="clearHistory">
         Gesprächsverlauf löschen
       </button>
+
+      <button class="drawer-action" id="accountBtn">
+        ♙ Mein Konto
+      </button>
+
     </div>
+
   </aside>
+
+  <!-- Konto -->
+
+  <dialog id="accountDialog" class="account-dialog">
+
+    <div class="account-panel">
+
+      <div class="settings-head">
+        <div>
+          <div class="account-eyebrow">QUESTIONBAR</div>
+          <h2>Dein Konto</h2>
+        </div>
+
+        <button class="icon-btn" id="closeAccount" aria-label="Schließen">
+          ×
+        </button>
+      </div>
+
+      <div id="accountLoggedOut">
+
+        <p class="account-description">
+          Melde dich an, um deine Chats mit deinem Konto zu synchronisieren.
+        </p>
+
+        <label for="accountEmail">E-Mail-Adresse</label>
+        <input
+          id="accountEmail"
+          type="email"
+          placeholder="name@beispiel.de"
+          autocomplete="email"
+        >
+
+        <label for="accountPassword">Passwort</label>
+        <input
+          id="accountPassword"
+          type="password"
+          placeholder="Mindestens 8 Zeichen"
+          autocomplete="current-password"
+        >
+
+        <button class="primary-btn" id="loginBtn" type="button">
+          Anmelden
+        </button>
+
+        <button class="account-secondary-btn" id="registerBtn" type="button">
+          Neues Konto erstellen
+        </button>
+
+      </div>
+
+      <div id="accountLoggedIn" hidden>
+
+        <p class="account-description">
+          Du bist mit deinem QuestionBar-Konto angemeldet.
+        </p>
+
+        <div class="account-user-card">
+          <div class="account-avatar">Q</div>
+          <div>
+            <strong>Angemeldet</strong>
+            <div class="account-user-email" id="accountUserEmail"></div>
+          </div>
+        </div>
+
+        <button class="account-secondary-btn danger-btn" id="logoutBtn" type="button">
+          Abmelden
+        </button>
+
+      </div>
+
+      <div id="accountMessage" class="account-message"></div>
+
+      <p class="account-footnote">
+        Deine API-Keys bleiben weiterhin lokal auf deinem Gerät.
+      </p>
+
+    </div>
+
+  </dialog>
 
   <!-- Einstellungen -->
 
   <dialog id="settingsDialog">
+
     <form method="dialog" class="settings">
 
       <div class="settings-head">
         <h2>Einstellungen</h2>
-        <button class="icon-btn" value="cancel"
-          aria-label="Schließen">×</button>
+
+        <button
+          class="icon-btn"
+          value="cancel"
+          aria-label="Schließen"
+        >×</button>
       </div>
 
       <label for="provider">KI-Anbieter</label>
@@ -143,12 +234,20 @@
 
       <label for="model">Modell</label>
 
-      <input id="model" value="gemini-3.8-flash" autocomplete="off">
+      <input
+        id="model"
+        value="gemini-3.8-flash"
+        autocomplete="off"
+      >
 
       <label for="apiKey" id="apiKeyLabel">Gemini API-Key</label>
 
-      <input id="apiKey" type="password"
-        placeholder="API-Key einfügen" autocomplete="off">
+      <input
+        id="apiKey"
+        type="password"
+        placeholder="API-Key einfügen"
+        autocomplete="off"
+      >
 
       <p class="settings-note">
         Der API-Key wird lokal auf diesem Gerät gespeichert.
@@ -169,85 +268,16 @@
       </button>
 
     </form>
+
   </dialog>
 
-  <!-- Konto -->
-
-  <dialog id="accountDialog" class="account-dialog">
-    <div class="account-panel">
-
-      <div class="settings-head">
-        <div>
-          <div class="account-eyebrow">QUESTIONBAR</div>
-          <h2>Dein Konto</h2>
-        </div>
-
-        <button class="icon-btn" id="closeAccount"
-          type="button" aria-label="Schließen">×</button>
-      </div>
-
-      <div id="accountLoggedOut">
-        <p class="account-description">
-          Melde dich an, um deine Chats mit deinem Konto zu synchronisieren.
-        </p>
-
-        <label for="accountEmail">E-Mail-Adresse</label>
-        <input id="accountEmail" type="email"
-          placeholder="name@beispiel.de" autocomplete="email">
-
-        <label for="accountPassword">Passwort</label>
-        <input id="accountPassword" type="password"
-          placeholder="Mindestens 8 Zeichen"
-          autocomplete="current-password">
-
-        <button class="primary-btn" id="loginBtn" type="button">
-          Anmelden
-        </button>
-
-        <button class="account-secondary-btn" id="registerBtn" type="button">
-          Neues Konto erstellen
-        </button>
-      </div>
-
-      <div id="accountLoggedIn" hidden>
-        <div class="account-user-card">
-          <div class="account-avatar">Q</div>
-          <div>
-            <strong>Angemeldet</strong>
-            <div id="accountUserEmail" class="account-user-email"></div>
-          </div>
-        </div>
-
-        <p class="account-description">
-          Deine Chats werden mit deinem QuestionBar-Konto synchronisiert.
-        </p>
-
-        <button class="account-secondary-btn danger-btn"
-          id="logoutBtn" type="button">
-          Abmelden
-        </button>
-      </div>
-
-      <div id="accountMessage" class="account-message"
-        role="status" aria-live="polite"></div>
-
-      <p class="account-footnote">
-        Deine API-Keys bleiben weiterhin lokal auf deinem Gerät.
-      </p>
-
-    </div>
-  </dialog>
-
-  <!-- Markdown und Sicherheit -->
+  <!-- Bibliotheken -->
 
   <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/dompurify@3.2.6/dist/purify.min.js"></script>
-
-  <!-- Supabase -->
-
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
-  <!-- QuestionBar -->
+  <!-- QuestionBar Funktionen -->
 
   <script src="app.js"></script>
   <script src="account.js"></script>
