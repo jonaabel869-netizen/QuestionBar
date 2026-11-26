@@ -559,9 +559,76 @@ function extractAnswer(data) {
 
 function isImageRequest(text) {
   return (
-    /\b(?:generiere|erstelle|erzeuge|zeichne|male|mach)\b[\s\S]{0,100}\b(?:bild|foto|zeichnung|illustration)\b/i.test(text) ||
-    /\b(?:bild|foto|zeichnung|illustration)\b[\s\S]{0,100}\b(?:generieren|erstellen|erzeugen|zeichnen|malen)\b/i.test(text)
+    /\b(?:generiere|erstelle|erzeuge|zeichne|male|mach|mache)\b[\s\S]{0,120}\b(?:bild|foto|zeichnung|illustration|grafik)\b/i.test(text) ||
+    /\b(?:bild|foto|zeichnung|illustration|grafik)\b[\s\S]{0,120}\b(?:generieren|erstellen|erzeugen|zeichnen|malen)\b/i.test(text) ||
+    /\b(?:bildgenerierung|bildgenerator)\b/i.test(text)
   );
+}
+
+// Erkennt Folgeanfragen wie:
+// "Erstelle es jetzt in Rot"
+// "Mach den Lamborghini blau"
+// "Ändere die Farbe zu Schwarz"
+// "Jetzt mit einem Sonnenuntergang"
+
+function isImageFollowUp(text) {
+  const value = text.trim();
+
+  const hasReference =
+    /\b(?:es|ihn|sie|das|dieses|davon|denselben|dieselbe|gleiches|gleiche|bild|auto|wagen)\b/i.test(value);
+
+  const hasChange =
+    /\b(?:erstelle|erzeuge|generiere|mach|mache|ändere|aendere|wandle|verändere|veraendere|jetzt|stattdessen|aber|nur|farbe|farbig|rot|grün|gruen|blau|schwarz|weiß|weiss|gelb|orange|lila|violett|rosa|pink|silber|gold|dunkler|heller|größer|groesser|kleiner|hintergrund|perspektive|stil|mit|ohne|in)\b/i.test(value);
+
+  const shortChange =
+    /^(?:und\s+)?(?:jetzt\s+)?(?:in|mit|ohne)\s+\w+/i.test(value);
+
+  return (hasReference && hasChange) || shortChange;
+}
+
+// Sucht das letzte erfolgreich generierte Bild im aktuellen Chat.
+// Das Bildprompt wird direkt in der Assistant-Nachricht gespeichert.
+
+function getPreviousImagePrompt() {
+  for (let i = state.history.length - 1; i >= 0; i--) {
+    const message = state.history[i];
+
+    if (
+      message.role === "assistant" &&
+      message.content === "🖼️ Dein Bild wurde erstellt."
+    ) {
+      if (message.imagePrompt) {
+        return message.imagePrompt;
+      }
+
+      // Unterstützung für ältere gespeicherte Chats
+      for (let j = i - 1; j >= 0; j--) {
+        if (state.history[j].role === "user") {
+          return state.history[j].content;
+        }
+      }
+    }
+  }
+
+  return null;
+}
+
+// Baut einen neuen Prompt aus dem ursprünglichen Bild
+// und der Änderungsanweisung des Nutzers.
+
+function buildImagePrompt(originalPrompt, followUp) {
+  return [
+    "Create a new image based on the following original image description:",
+    originalPrompt,
+    "",
+    "The user now requests this change:",
+    followUp,
+    "",
+    "IMPORTANT: Keep the same main subject and overall scene from the original description.",
+    "Apply the latest user instruction as the highest priority.",
+    "If the new instruction conflicts with the original description, the new instruction wins.",
+    "Generate the actual image. Do not return a text description."
+  ].join("\n");
 }
 
 // ========================================
@@ -620,7 +687,22 @@ async function ask(text) {
   text = text.trim();
   if (!text || state.busy) return;
 
-  if (!isImageRequest(text) && !getCurrentApiKey()) {
+  // Vor dem Hinzufügen der neuen Nachricht das letzte Bild suchen.
+  const previousImagePrompt = getPreviousImagePrompt();
+
+  // Prüfen, ob es eine neue Bildanfrage oder eine Folgeanfrage ist.
+  const directImageRequest = isImageRequest(text);
+
+  const imageFollowUp =
+    !directImageRequest &&
+    previousImagePrompt &&
+    isImageFollowUp(text);
+
+  const shouldGenerateImage =
+    directImageRequest || Boolean(imageFollowUp);
+
+  // Für Bildgenerierung wird kein Gemini- oder Groq-Key benötigt.
+  if (!shouldGenerateImage && !getCurrentApiKey()) {
     $("settingsDialog").showModal();
     $("provider").value = settings.provider;
     $("model").value = settings.model;
@@ -628,6 +710,11 @@ async function ask(text) {
     $("apiKey").focus();
     return;
   }
+
+  // Bei einer Folgeanfrage den alten Prompt weiterverwenden.
+  const finalImagePrompt = imageFollowUp
+    ? buildImagePrompt(previousImagePrompt, text)
+    : text;
 
   state.busy = true;
   $("welcome").style.display = "none";
@@ -641,20 +728,21 @@ async function ask(text) {
   saveActive();
 
   try {
-    if (isImageRequest(text)) {
+    if (shouldGenerateImage) {
       try {
-        const imageUrl = await requestCloudflareImage(text);
+        const imageUrl = await requestCloudflareImage(finalImagePrompt);
 
         const imageMessage = "🖼️ Dein Bild wurde erstellt.";
 
         state.history.push({
           role: "assistant",
-          content: imageMessage
+          content: imageMessage,
+          imagePrompt: finalImagePrompt
         });
 
         typing(false);
         addMessage("assistant", imageMessage);
-        appendGeneratedImage(imageUrl, text);
+        appendGeneratedImage(imageUrl, finalImagePrompt);
         saveActive();
 
       } catch (imageError) {
