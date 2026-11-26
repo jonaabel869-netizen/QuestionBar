@@ -1,3 +1,4 @@
+
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
 
 :root {
@@ -351,7 +352,7 @@ body { min-height: 100dvh; }
   padding: 0 8px 8px;
 }
 
-/* Seitenmenü */
+/* SEITENMENÜ */
 
 .drawer-backdrop {
   position: fixed;
@@ -443,7 +444,7 @@ body { min-height: 100dvh; }
   background: transparent;
 }
 
-/* Einstellungsdialog */
+/* EINSTELLUNGSDIALOG */
 
 dialog {
   width: min(92vw,440px);
@@ -528,9 +529,7 @@ dialog::backdrop { background: #000a; }
   cursor: pointer;
 }
 
-/* ========================================
-   QUESTIONBAR - POLLINATIONS / BILDGENERIERUNG
-======================================== */
+/* BILDMENÜ */
 
 .image-menu-button {
   margin-top: 9px;
@@ -541,53 +540,7 @@ dialog::backdrop { background: #000a; }
 
 .image-menu-button:active { background: #493025; }
 
-.pollinations-card {
-  margin-top: 14px;
-  padding: 14px;
-  border: 1px solid #44352d;
-  border-radius: 14px;
-  background: linear-gradient(145deg,#29211c,#1d1916);
-}
-
-.pollinations-card-title {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font: 600 13px 'Space Grotesk';
-  color: #fff3e6;
-}
-
-.pollinations-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: #d97757;
-  box-shadow: 0 0 12px #d9775780;
-}
-
-.pollinations-status {
-  margin-top: 7px;
-  font-size: 11px;
-  color: #a99a8e;
-}
-
-.pollinations-status.connected { color: #82c995; }
-
-.pollinations-connect {
-  width: 100%;
-  margin-top: 12px;
-  padding: 10px;
-  border: 0;
-  border-radius: 9px;
-  background: #d97757;
-  color: white;
-  font: 600 12px 'DM Sans';
-  cursor: pointer;
-}
-
-.pollinations-connect:active { background: #a94e35; }
-
-/* Bild-Dialog */
+/* BILD-DIALOG */
 
 .image-dialog {
   width: min(92vw,520px);
@@ -693,13 +646,213 @@ dialog::backdrop { background: #000a; }
   border: 1px solid #594033;
 }
 
+/* ========================================
+   NEUE BILDGENERIERUNG IM CHAT
+======================================== */
+
+.image-message .message-body {
+  width: 100%;
+  max-width: 620px;
+}
+
+.image-generation-card {
+  width: 100%;
+  max-width: 560px;
+  overflow: hidden;
+  border: 1px solid #49372d;
+  border-radius: 18px;
+  background: linear-gradient(145deg,#211b17,#171412);
+  box-shadow: 0 12px 45px #0005;
+  animation: imageCardAppear .35s ease both;
+}
+
+.image-generation-preview {
+  height: 250px;
+  position: relative;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background:
+    radial-gradient(ellipse at center,#503326 0%,#29201b 42%,#171412 100%);
+}
+
+.image-generation-glow {
+  position: absolute;
+  width: 190px;
+  height: 190px;
+  border-radius: 50%;
+  background: #d97757;
+  filter: blur(75px);
+  opacity: .32;
+  animation: imageGlow 3s ease-in-out infinite alternate;
+}
+
+.image-generation-spinner {
+  position: absolute;
+  width: 76px;
+  height: 76px;
+  border: 3px solid #ffffff20;
+  border-top-color: #f2a17e;
+  border-right-color: #d97757;
+  border-radius: 50%;
+  animation: imageSpin 1.2s linear infinite;
+}
+
+.image-generation-icon {
+  position: relative;
+  z-index: 1;
+  font-size: 29px;
+  color: #ffe0cf;
+  text-shadow: 0 0 25px #ff9d75;
+  animation: imagePulse 1.8s ease-in-out infinite;
+}
+
+.image-generation-info {
+  padding: 17px 19px 19px;
+}
+
+.image-generation-title {
+  color: #fff3e6;
+  font: 600 15px 'Space Grotesk',sans-serif;
+}
+
+.image-generation-status {
+  display: flex;
+  align-items: center;
+  margin-top: 6px;
+  color: #a99a8e;
+  font-size: 12px;
+}
+
+.image-generation-dots {
+  display: inline-flex;
+  gap: 4px;
+  margin-left: 7px;
+}
+
+.image-generation-dots i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #e28b68;
+  animation: imageDot 1s infinite ease-in-out;
+}
+
+.image-generation-dots i:nth-child(2) { animation-delay: .15s; }
+.image-generation-dots i:nth-child(3) { animation-delay: .3s; }
+
+.image-generation-complete {
+  border-color: #594237;
+  background: #1b1714;
+}
+
+.image-generation-result {
+  width: 100%;
+  background: #151210;
+}
+
+.image-generation-result .generated-image {
+  display: block;
+  width: 100%;
+  max-height: 650px;
+  object-fit: contain;
+  border: 0;
+  border-radius: 0;
+  animation: imageCardAppear .4s ease both;
+}
+
+.image-generation-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 12px 15px;
+  color: #c8a18e;
+  font-size: 12px;
+}
+
+.image-generation-footer .image-download {
+  display: inline-block;
+  padding: 7px 11px;
+  font-size: 12px;
+}
+
+.image-generation-error {
+  padding: 20px;
+  border-color: #744638;
+  background: linear-gradient(145deg,#2a1c18,#1c1714);
+}
+
+.image-error-icon {
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin-bottom: 12px;
+  border-radius: 50%;
+  background: #743b2d;
+  color: white;
+  font-weight: 700;
+}
+
+.image-error-text {
+  margin-top: 8px;
+  color: #c6a99b;
+  font-size: 12px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+.image-retry-btn {
+  margin-top: 15px;
+  padding: 9px 13px;
+  border: 1px solid #82513e;
+  border-radius: 9px;
+  background: #3b2820;
+  color: #f4b08e;
+  font: 600 12px 'DM Sans';
+  cursor: pointer;
+}
+
+.image-retry-btn:hover {
+  background: #513326;
+}
+
+@keyframes imageSpin {
+  to { transform: rotate(360deg); }
+}
+
+@keyframes imagePulse {
+  0%,100% { transform: scale(1); opacity: .8; }
+  50% { transform: scale(1.2); opacity: 1; }
+}
+
+@keyframes imageGlow {
+  from { opacity: .2; transform: scale(.8); }
+  to { opacity: .48; transform: scale(1.2); }
+}
+
+@keyframes imageDot {
+  0%,80%,100% { opacity: .3; transform: translateY(0); }
+  40% { opacity: 1; transform: translateY(-4px); }
+}
+
+@keyframes imageCardAppear {
+  from { opacity: 0; transform: translateY(9px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* RESPONSIVE */
+
 @media (min-width:700px) {
   .chat { padding-top: 38px; }
+
   .composer {
     margin-left: auto;
     margin-right: auto;
     width: min(calc(100% - 36px),760px);
   }
+
   .welcome { margin-top: 11vh; }
   .suggestion { padding: 17px; }
   .suggestion span { font-size: 13px; }
@@ -708,4 +861,13 @@ dialog::backdrop { background: #000a; }
 @media (max-width:420px) {
   .image-panel { padding: 16px; }
   .image-dialog { width: 94vw; }
+
+  .image-generation-preview {
+    height: 205px;
+  }
+
+  .image-generation-footer {
+    align-items: flex-start;
+    flex-direction: column;
+  }
 }
