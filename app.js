@@ -1,4 +1,3 @@
-
 const state = {
   history: [],
   chats: [],
@@ -644,20 +643,37 @@ function extractAnswer(data) {
 // ========================================
 
 function isImageRequest(text) {
-  const value = text.trim();
+  const value = String(text || "")
+    .normalize("NFKC")
+    .toLocaleLowerCase("de")
+    .trim();
 
+  if (!value) return false;
+
+  // Typische Begriffe für einen Bildauftrag.
+  const imageTerms =
+    /\b(?:bild(?:er)?|foto(?:s|grafie)?|fotografie|zeichnung|illustration|grafik|render|thumbnail|logo|hintergrundbild)\b/i;
+
+  const actionTerms =
+    /\b(?:generier(?:e|en|t)?|erstell(?:e|en|t)?|erzeug(?:e|en|t)?|zeichn(?:e|en)?|mal(?:e|en)?|mach(?:e|en)?|kreier(?:e|en)?|render(?:e|n)?)\b/i;
+
+  // Aktion vor dem Bildbegriff:
+  // "Generiere mir ein Bild von einem Apfel."
+  if (actionTerms.test(value) && imageTerms.test(value)) {
+    return true;
+  }
+
+  // Bildbegriff vor der Aktion:
+  // "Ein Bild erstellen" / "Foto generieren".
   if (
-    /\b(?:generiere|erstelle|erzeuge|zeichne|male|mach|mache)\b[\s\S]{0,120}\b(?:bild|foto|fotografie|zeichnung|illustration|grafik|render)\b/i.test(value) ||
-    /\b(?:bild|foto|fotografie|zeichnung|illustration|grafik|render)\b[\s\S]{0,120}\b(?:generieren|erstellen|erzeugen|zeichnen|malen)\b/i.test(value) ||
-    /\b(?:bildgenerierung|bildgenerator)\b/i.test(value)
+    imageTerms.test(value) &&
+    /\b(?:generier(?:en|e)?|erstell(?:en|e)?|erzeug(?:en|e)?|zeichn(?:en|e)?|malen|machen)\b/i.test(value)
   ) {
     return true;
   }
 
-  return (
-    /\b(?:foto|fotografie|bild|illustration|zeichnung|grafik|render)\b/i.test(value) &&
-    /\b(?:realistisch|fotorealistisch|realistisches|realistische|generiert|erstellt)\b/i.test(value)
-  );
+  // Explizite Kurzbefehle.
+  return /\b(?:bildgenerierung|bildgenerator|bild erstellen|bild generieren|foto erstellen|foto generieren)\b/i.test(value);
 }
 
 function isImageFollowUp(text) {
@@ -1166,7 +1182,8 @@ if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
     if (location.protocol === "http:" || location.protocol === "https:") {
       navigator.serviceWorker
-        .register("./sw.js")
+        .register("./sw.js?v=20261126-2", { updateViaCache: "none" })
+        .then(registration => registration.update())
         .catch(err => console.error("Service Worker:", err));
     }
   });
