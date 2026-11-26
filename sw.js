@@ -1,46 +1,33 @@
 
-const CACHE = "questionbar-shell-v2";
+function isImageRequest(text) {
+  const value = String(text || "").trim().toLowerCase();
 
-const ASSETS = [
-  "./",
-  "./index.html",
-  "./styles.css",
-  "./app.js",
-  "./manifest.webmanifest"
-];
+  if (!value) return false;
 
-self.addEventListener("install", event => {
-  event.waitUntil(
-    caches.open(CACHE).then(cache => cache.addAll(ASSETS))
+  const imageWords =
+    /\b(?:bild|bilder|foto|fotos|fotografie|zeichnung|illustration|grafik|render|kunstwerk|logo|thumbnail|hintergrundbild)\b/i;
+
+  const actionWords =
+    /\b(?:generiere|generier|erstelle|erstell|erzeuge|erzeug|zeichne|male|mach|mache|kreier|produzier|render)\b/i;
+
+  if (imageWords.test(value) && actionWords.test(value)) {
+    return true;
+  }
+
+  if (
+    /\b(?:ich möchte|ich will|kannst du|bitte|mach mir|erstelle mir|generiere mir|erzeuge mir)\b[\s\S]{0,100}\b(?:bild|foto|zeichnung|illustration|grafik|render)\b/i.test(value)
+  ) {
+    return true;
+  }
+
+  if (
+    /\b(?:bild|foto|zeichnung|illustration|grafik)\b[\s\S]{0,100}\b(?:erstellen|generieren|erzeugen|zeichnen|malen)\b/i.test(value)
+  ) {
+    return true;
+  }
+
+  return (
+    /\b(?:foto|fotografie|bild|illustration|zeichnung|grafik|render)\b/i.test(value) &&
+    /\b(?:realistisch|fotorealistisch|realistisches|realistische|erstelle|generiere|erzeuge|zeige|mach)\b/i.test(value)
   );
-
-  self.skipWaiting();
-});
-
-self.addEventListener("activate", event => {
-  event.waitUntil(
-    caches.keys().then(keys =>
-      Promise.all(
-        keys
-          .filter(key => key !== CACHE)
-          .map(key => caches.delete(key))
-      )
-    )
-  );
-
-  self.clients.claim();
-});
-
-self.addEventListener("fetch", event => {
-  if (event.request.method !== "GET") return;
-
-  event.respondWith(
-    caches.match(event.request).then(cached => {
-      if (cached) return cached;
-
-      return fetch(event.request).catch(() =>
-        caches.match("./index.html")
-      );
-    })
-  );
-});
+}
