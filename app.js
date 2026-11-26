@@ -558,18 +558,29 @@ function extractAnswer(data) {
 // ========================================
 
 function isImageRequest(text) {
+  const value = text.trim();
+
+  // Klassische Bildanfragen
+  if (
+    /\b(?:generiere|erstelle|erzeuge|zeichne|male|mach|mache)\b[\s\S]{0,120}\b(?:bild|foto|fotografie|zeichnung|illustration|grafik|render)\b/i.test(value) ||
+    /\b(?:bild|foto|fotografie|zeichnung|illustration|grafik|render)\b[\s\S]{0,120}\b(?:generieren|erstellen|erzeugen|zeichnen|malen)\b/i.test(value) ||
+    /\b(?:bildgenerierung|bildgenerator)\b/i.test(value)
+  ) {
+    return true;
+  }
+
+  // Auch reine Bildbeschreibungen erkennen:
+  // "Ein grüner Apfel auf einem weißen Tisch, realistisches Foto."
   return (
-    /\b(?:generiere|erstelle|erzeuge|zeichne|male|mach|mache)\b[\s\S]{0,120}\b(?:bild|foto|zeichnung|illustration|grafik)\b/i.test(text) ||
-    /\b(?:bild|foto|zeichnung|illustration|grafik)\b[\s\S]{0,120}\b(?:generieren|erstellen|erzeugen|zeichnen|malen)\b/i.test(text) ||
-    /\b(?:bildgenerierung|bildgenerator)\b/i.test(text)
+    /\b(?:foto|fotografie|bild|illustration|zeichnung|grafik|render)\b/i.test(value) &&
+    /\b(?:realistisch|fotorealistisch|realistisches|realistische|generiert|erstellt)\b/i.test(value)
   );
 }
 
-// Erkennt Folgeanfragen wie:
+// Folgeanfragen wie:
 // "Erstelle es jetzt in Rot"
 // "Mach den Lamborghini blau"
 // "Ändere die Farbe zu Schwarz"
-// "Jetzt mit einem Sonnenuntergang"
 
 function isImageFollowUp(text) {
   const value = text.trim();
@@ -586,10 +597,10 @@ function isImageFollowUp(text) {
   return (hasReference && hasChange) || shortChange;
 }
 
-// Sucht das letzte erfolgreich generierte Bild im aktuellen Chat.
-// Das Bildprompt wird direkt in der Assistant-Nachricht gespeichert.
+// Sucht das letzte Bild oder eine Bildbeschreibung im aktuellen Chat.
 
 function getPreviousImagePrompt() {
+  // Zuerst nach einem erfolgreich generierten Bild suchen.
   for (let i = state.history.length - 1; i >= 0; i--) {
     const message = state.history[i];
 
@@ -601,7 +612,6 @@ function getPreviousImagePrompt() {
         return message.imagePrompt;
       }
 
-      // Unterstützung für ältere gespeicherte Chats
       for (let j = i - 1; j >= 0; j--) {
         if (state.history[j].role === "user") {
           return state.history[j].content;
@@ -610,11 +620,24 @@ function getPreviousImagePrompt() {
     }
   }
 
+  // Falls noch kein Bild existiert:
+  // Die letzte passende Bildbeschreibung suchen.
+  for (let i = state.history.length - 1; i >= 0; i--) {
+    const message = state.history[i];
+
+    if (
+      message.role === "user" &&
+      isImageRequest(message.content)
+    ) {
+      return message.content;
+    }
+  }
+
   return null;
 }
 
 // Baut einen neuen Prompt aus dem ursprünglichen Bild
-// und der Änderungsanweisung des Nutzers.
+// und der Änderungsanweisung.
 
 function buildImagePrompt(originalPrompt, followUp) {
   return [
@@ -624,7 +647,7 @@ function buildImagePrompt(originalPrompt, followUp) {
     "The user now requests this change:",
     followUp,
     "",
-    "IMPORTANT: Keep the same main subject and overall scene from the original description.",
+    "Keep the same main subject and overall scene.",
     "Apply the latest user instruction as the highest priority.",
     "If the new instruction conflicts with the original description, the new instruction wins.",
     "Generate the actual image. Do not return a text description."
@@ -687,21 +710,20 @@ async function ask(text) {
   text = text.trim();
   if (!text || state.busy) return;
 
-  // Vor dem Hinzufügen der neuen Nachricht das letzte Bild suchen.
+  // Vor der neuen Nachricht den bisherigen Bildkontext suchen.
   const previousImagePrompt = getPreviousImagePrompt();
 
-  // Prüfen, ob es eine neue Bildanfrage oder eine Folgeanfrage ist.
   const directImageRequest = isImageRequest(text);
 
   const imageFollowUp =
     !directImageRequest &&
-    previousImagePrompt &&
+    Boolean(previousImagePrompt) &&
     isImageFollowUp(text);
 
   const shouldGenerateImage =
     directImageRequest || Boolean(imageFollowUp);
 
-  // Für Bildgenerierung wird kein Gemini- oder Groq-Key benötigt.
+  // Für Bilder wird kein Gemini- oder Groq-Key benötigt.
   if (!shouldGenerateImage && !getCurrentApiKey()) {
     $("settingsDialog").showModal();
     $("provider").value = settings.provider;
@@ -711,7 +733,6 @@ async function ask(text) {
     return;
   }
 
-  // Bei einer Folgeanfrage den alten Prompt weiterverwenden.
   const finalImagePrompt = imageFollowUp
     ? buildImagePrompt(previousImagePrompt, text)
     : text;
@@ -728,6 +749,10 @@ async function ask(text) {
   saveActive();
 
   try {
+    // ====================================
+    // BILDANFRAGE DIREKT AN CLOUDFLARE
+    // ====================================
+
     if (shouldGenerateImage) {
       try {
         const imageUrl = await requestCloudflareImage(finalImagePrompt);
@@ -764,6 +789,10 @@ async function ask(text) {
 
       return;
     }
+
+    // ====================================
+    // NORMALE CHAT-ANFRAGE AN GROQ/GEMINI
+    // ====================================
 
     const contents = state.history.map(m => ({
       role: m.role === "assistant" ? "model" : "user",
